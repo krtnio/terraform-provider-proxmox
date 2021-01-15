@@ -2559,8 +2559,6 @@ func resourceVirtualEnvironmentVMReadCustom(d *schema.ResourceData, m interface{
 		} else {
 			initialization[mkResourceVirtualEnvironmentVMInitializationUserDataFileID] = ""
 		}
-	} else {
-		initialization[mkResourceVirtualEnvironmentVMInitializationUserDataFileID] = ""
 	}
 
 	currentInitialization := d.Get(mkResourceVirtualEnvironmentVMInitialization).([]interface{})
