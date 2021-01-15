@@ -2525,7 +2525,9 @@ func resourceVirtualEnvironmentVMReadCustom(d *schema.ResourceData, m interface{
 		ipConfigList[ipConfigIndex] = ipConfigItem
 	}
 
-	initialization[mkResourceVirtualEnvironmentVMInitializationIPConfig] = ipConfigList[:ipConfigLast+1]
+	if ipConfigLast != -1 {
+		initialization[mkResourceVirtualEnvironmentVMInitializationIPConfig] = ipConfigList[:ipConfigLast+1]
+	}
 
 	if vmConfig.CloudInitPassword != nil || vmConfig.CloudInitSSHKeys != nil || vmConfig.CloudInitUsername != nil {
 		initializationUserAccount := map[string]interface{}{}
