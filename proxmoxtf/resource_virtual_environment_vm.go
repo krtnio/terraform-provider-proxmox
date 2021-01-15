@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/danitso/terraform-provider-proxmox/proxmox"
+	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/helper/validation"
 )
@@ -956,6 +957,11 @@ func resourceVirtualEnvironmentVM() *schema.Resource {
 		Read:   resourceVirtualEnvironmentVMRead,
 		Update: resourceVirtualEnvironmentVMUpdate,
 		Delete: resourceVirtualEnvironmentVMDelete,
+
+		Timeouts: &schema.ResourceTimeout{
+			Create: schema.DefaultTimeout(1 * time.Minute),
+			Delete: schema.DefaultTimeout(3 * time.Minute),
+		},
 	}
 }
 
@@ -3332,7 +3338,7 @@ func resourceVirtualEnvironmentVMUpdate(d *schema.ResourceData, m interface{}) e
 			}
 		} else {
 			forceStop := proxmox.CustomBool(true)
-			shutdownTimeout := 300
+			shutdownTimeout := int(d.Timeout(schema.TimeoutUpdate).Seconds())
 
 			err = veClient.ShutdownVM(nodeName, vmID, &proxmox.VirtualEnvironmentVMShutdownRequestBody{
 				ForceStop: &forceStop,
@@ -3343,7 +3349,7 @@ func resourceVirtualEnvironmentVMUpdate(d *schema.ResourceData, m interface{}) e
 				return err
 			}
 
-			err = veClient.WaitForVMState(nodeName, vmID, "stopped", 30, 5)
+			err = veClient.WaitForVMState(nodeName, vmID, "stopped", shutdownTimeout, 5)
 
 			if err != nil {
 				return err
@@ -3402,21 +3408,31 @@ func resourceVirtualEnvironmentVMDelete(d *schema.ResourceData, m interface{}) e
 
 	if status.Status != "stopped" {
 		forceStop := proxmox.CustomBool(true)
-		shutdownTimeout := 300
+		shutdownTimeout := 180 // TODO: make configurable and retrieve from VM config
 
 		err = veClient.ShutdownVM(nodeName, vmID, &proxmox.VirtualEnvironmentVMShutdownRequestBody{
 			ForceStop: &forceStop,
 			Timeout:   &shutdownTimeout,
 		})
 
-		if err != nil {
-			return err
+		vmStatusStateConf := &resource.StateChangeConf{
+			Pending: []string{"running"}, // TODO: make const
+			Target:  []string{"stopped"},
+			Refresh: func() (interface{}, string, error) {
+				data, err := veClient.GetVMStatus(nodeName, vmID)
+				if err != nil {
+					return nil, "", err
+				}
+				return data, data.Status, nil
+			},
+			Timeout:      d.Timeout(schema.TimeoutDelete),
+			Delay:        10 * time.Second,
+			MinTimeout:   10 * time.Second,
+			PollInterval: 5 * time.Second,
 		}
-
-		err = veClient.WaitForVMState(nodeName, vmID, "stopped", 30, 5)
-
+		_, err = vmStatusStateConf.WaitForState()
 		if err != nil {
-			return err
+			return fmt.Errorf("error waiting for example instance (%s) to be created: %s", d.Id(), err)
 		}
 	}
 
